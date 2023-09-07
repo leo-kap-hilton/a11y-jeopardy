@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>A11y Rulez Trivia Rules</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<!-- partial:index.partial.html -->
+<div id="prompt-modal" hidden class="a11y-modal" role="dialog" aria-modal="true" aria-label="prompt" tabindex="-1">
+  <div role="document">
+    <div id="category-points"><div id="titlebar-cat"></div> <div id="titlebar-points"></div></div>
+    <h1 tabindex="-1">placeholder</h1>
+    <div id="dialog-content"></div>
+    <button id="close-dialog" aria-label="Close">x</button>
+  </div>
+</div>
+<div id="page-content">
+  <div id="jeopardy-container" role="region" aria-labelledby="caption" class="rules">
+	<h1 id="caption">A11y Rulez Trivia Rules</h1>
+	<ol>
+		<li>Break into 5 teams divided up alphabetically by Team's list.</li>
+		<li>Shout out a team name in chat!</li>
+		<li><a target="_blank" href="https://www.google.com/search?q=random+number+generator&rlz=1C1GCEA_enUS984US984&oq=random+n&aqs=chrome.0.0i131i433i512j0i433i512j69i57j0i512j0i131i433i512j0i433i512j0i512j0i433i512j0i512j0i433i512.3536j1j9&sourceid=chrome&ie=UTF-8">Random number generator</a> to determine which team picks the first category.</li>
+		<li>Use the "Raise your hand" feature in MS Teams to "Buzz in".</li>
+		<li>Anyone on the team may buzz in as soon as they know the answer. After our host reads the question, the first person with their MS teams hand raised may answer. If that person answers correctly, their team gets the points. If they buzz in with the wrong answer, their team loses the points.</li>
+		<li>If the first team gets it wrong, we'll go to the next person with their hand raised that is on a different team to answer.</li>
+		<li>Although this looks like a Jeopardy board, you do not have to state the answer in the form of a question.</li>
+		<li>Along with bragging rights, there will be a <strong>mystery prize</strong> for the winning team so good luck to all!</li>
+	</ol>
+   </div>
+</div>
+</div>
+
+<footer>
+<img src="https://artisticabode.com/accessibility/a11y-rulez-trivia/imgs/hilton-DA-logo.png" alt="Hilton. Digital Accessibility." />
+</footer>
+</body>
+</html>

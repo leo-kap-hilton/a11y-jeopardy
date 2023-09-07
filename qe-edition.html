@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>A11y Rulez Trivia - QE Edition</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="page-body">
+<div id="page-bg">
+<!-- partial:index.partial.html -->
+<div id="prompt-modal" hidden class="a11y-modal" role="dialog" aria-modal="true" aria-label="prompt" tabindex="-1">
+  <div role="document">
+    <div id="category-points"><div id="titlebar-cat"></div> <div id="titlebar-points"></div></div>
+    <h1 tabindex="-1">Placeholder</h1>
+    <div id="dialog-content"></div>
+    <button id="close-dialog" aria-label="Close">x</button>
+  </div>
+</div>
+<div id="page-content">
+  <div id="score">
+	<table>
+		<caption>Score</caption>
+		<tr>
+			<th scope="column" class="team1"><div contenteditable="true">Team 1</div></th>
+			<th scope="column" class="team2"><div contenteditable="true">Team 2</div></th>
+			<th scope="column" class="team3"><div contenteditable="true">Team 3</div></th>
+			<th scope="column" class="team4"><div contenteditable="true">Team 4</div></th>
+			<th scope="column" class="team5"><div contenteditable="true">Team 5</div></th>
+		</tr>
+		<tr>
+			<td id="team1"><div contenteditable="true">0</div></td>
+			<td id="team2"><div contenteditable="true">0</div></td>
+			<td id="team3"><div contenteditable="true">0</div></td>
+			<td id="team4"><div contenteditable="true">0</div></td>
+			<td id="team5"><div contenteditable="true">0</div></td>
+		</tr>
+	</table>
+  </div>
+  <div id="jeopardy-container" role="region" aria-labelledby="caption"></div>
+</div>
+<!-- partial -->
+
+<script type="module">
+
+//import inertPolyfill from "https://cdn.skypack.dev/inert-polyfill@0.2.5";
+
+let html = document.querySelector('html');
+let container = document.querySelector('#jeopardy-container');
+let dialog = document.querySelector('[role="dialog"]');
+let dialogContent = document.querySelector('#dialog-content');
+let titlebarCat = document.querySelector('#titlebar-cat');
+let titlebarPoints = document.querySelector('#titlebar-points');
+let h1 = document.querySelector('h1');
+let closeDialogBtn = document.querySelector('#close-dialog');
+let pageContent = document.querySelector('#page-content');
+let activeButton = null;
+
+let bonus = new Audio('sound/bonus.wav');
+let bonus2 = new Audio('sound/bonus-2.wav');
+let bonus3 = new Audio('sound/bonus-3.wav');
+let buzzer = new Audio('sound/buzzer.wav');
+let cheers = new Audio('sound/cheers.wav');
+let correctAnswer = new Audio('sound/correct-answer.wav');
+let failurePaino = new Audio('sound/failure-piano.wav');
+let finalLevel = new Audio('sound/final-level.wav');
+let gameOver = new Audio('sound/game-over.wav');
+let levelComplete = new Audio('sound/level-complete.wav');
+let losing = new Audio('sound/losing.wav');
+let notificationSound = new Audio('sound/notification-quiet.wav');
+let scoreCounter = new Audio('sound/score-counter-quiet.wav');
+let wrongAnswer = new Audio('sound/wrong-answer.wav');
+
+function getRandomInt(min, max) {
+  min = Math.ceil(min);
+  max = Math.floor(max);
+  return Math.floor(Math.random() * (max - min) + min); //The maximum is exclusive and the minimum is inclusive
+}
+
+let build = (title, categories) => {
+  container.innerHTML = '';
+  
+  let table = document.createElement('table');
+  let caption = document.createElement('caption');
+  caption.setAttribute('id', 'caption');
+  caption.innerText = title;
+  caption.setAttribute('tabindex', '-1');
+  table.append(caption);
+  let thead = document.createElement('thead');
+  let tbody = document.createElement('tbody');
+  let headerRow = document.createElement('tr');
+  table.append(thead);
+  table.append(tbody);
+  thead.append(headerRow);
+  
+  categories.forEach(category => {
+      let th = document.createElement('th');
+      th.innerText = category.title;
+      headerRow.append(th);
+  });              
+  
+  
+  for (var i=1; i<=5; i++) {
+    let row = document.createElement('tr');
+    tbody.append(row);
+    
+    categories.forEach((category, categoryIndex) => {
+      let td = document.createElement('td');
+      let button = document.createElement('button');
+      button.innerText = i + '00';
+      button.setAttribute('data-category', categoryIndex);
+      button.setAttribute('data-level', i);
+      
+      if (!category['level'+i] || !category['level'+i].length) {
+        button.setAttribute('disabled', true);
+        let span = document.createElement('span');
+        span.classList.add('at-only');
+        span.innerText = 'empty';
+        td.append(span);
+      } else {
+        button.setAttribute('data-modal-open', 'prompt-modal');
+        let question = category['level'+i][getRandomInt(0, category['level'+i].length-1)];
+        
+        button.addEventListener('click', e => {
+	    notificationSound.play();
+          dialog.querySelector('h1').innerText = question.answer;
+          titlebarCat.innerText = category.title;
+	    titlebarPoints.innerText = button.innerText + ' points';
+          dialogContent.innerHTML = '';
+          if (question.answer_details) {
+            dialogContent.innerHTML += question.answer_details;
+          }
+
+	    dialogContent.innerHTML += `<button id="correct">Correct</button>`;
+	    dialogContent.innerHTML += `<button id="incorrect">Incorrect</button>`;
+          dialogContent.innerHTML += `<details><summary>Answer</summary>${question.question}</details>`;
+
+	    
+	    let correctBtn = document.querySelector('#correct');
+	    let incorrectBtn = document.querySelector('#incorrect');
+	    
+	    correctBtn.addEventListener('click', addPoints);
+	    incorrectBtn.addEventListener('click', subtractPoints);
+
+          if (question.more) {
+            dialogContent.innerHTML += `<details><summary>Further Reading</summary>${question.more}</details>`;
+          }
+          openDialog();
+          activeButton = button;
+          let span = document.createElement('span');
+          span.classList.add('at-only');
+          span.innerText = 'empty';
+          td.append(span);
+        });
+      }
+      
+      td.append(button);
+      row.append(td);
+    });
+    
+  }
+  
+  attachArrowKeySupport(table, categories.length);
+  
+  container.append(table);
+}
+
+let attachArrowKeySupport = (table, numColumns) => {
+  var focusGrid = [];
+  var rows = table.querySelectorAll('tbody tr');
+  var newFocusTarget;
+
+  for (var i = 0; i < rows.length; i++) {
+    var cells = rows[i].querySelectorAll('button');
+    focusGrid.push([].slice.call(cells));
+  }
+
+  newFocusTarget = focusGrid[0][0];
+
+  var findCurrentCoords = function() {
+    // Find the current position
+    for (var y = 0; y < focusGrid.length; y++) {
+      for (var x = 0; x < focusGrid.length; x++) {
+        if (focusGrid[y][x] === document.activeElement) {
+          return {x: x, y: y};
+        }
+      }
+    }
+  };
+  
+  let seekInGrid = (axis, direction, currentCoords) => {
+    let newPos = currentCoords[axis];
+    while (true) {
+      if (direction === 'positive') {
+        newPos++;
+      } else {
+        newPos--;
+      }
+
+      if (newPos < 0) {
+        // can't be negative
+        return;
+      }
+
+      if (axis === 'y' && newPos > focusGrid.length-1) {
+        // Can't be longer than the number of rows
+        return;
+      }
+
+      if (axis === 'x' && newPos > numColumns-1) {
+        // Can't be longer than the number of columns
+        return;
+      }
+
+      // look at the next button on the x axis... if not disabled, return the button
+      if (axis === 'x' && !focusGrid[currentCoords.y][newPos].hasAttribute('disabled')) {
+        return focusGrid[currentCoords.y][newPos];
+      }
+
+      // look at the next button on the y axis... if not disabled, return the button
+      if (axis === 'y' && !focusGrid[newPos][currentCoords.x].hasAttribute('disabled')) {
+        return focusGrid[newPos][currentCoords.x];
+      }
+    }
+  };
+
+  let moveInGrid = function(key) {
+    let currentCoords = findCurrentCoords();
+
+    switch(key) {
+      case 38: //up
+        newFocusTarget = seekInGrid('y', 'negative', currentCoords);
+        break;
+      case 40: //down
+        newFocusTarget = seekInGrid('y', 'positive', currentCoords);
+        break;
+      case 37: //left
+        newFocusTarget = seekInGrid('x', 'negative', currentCoords);
+        break;
+      case 39: //right
+         newFocusTarget = seekInGrid('x', 'positive', currentCoords);
+        break;
+      default:
+        // nothing
+    }
+    
+    if (newFocusTarget) {
+      newFocusTarget.focus();
+    }
+  };
+
+  table.addEventListener('keyup', function(e) {
+    var key = e.which || e.keyCode;
+
+    switch(key) {
+      case 38: //up
+      case 40: //down
+      case 37: //left
+      case 39: //right
+        moveInGrid(key);
+      default:
+        // nothing
+    }
+  });
+  
+  
+  table.addEventListener('keydown', function(e) {
+    var key = e.which || e.keyCode;
+
+    switch(key) {
+      case 38: //up
+      case 40: //down
+      case 37: //left
+      case 39: //right
+        // prevent default browser keyup behavior for arrow keys
+        e.preventDefault();
+        return false;
+      default:
+        // nothing
+    }
+  });
+}
+
+let openDialog = () => {
+  dialog.removeAttribute('hidden');
+  dialog.removeAttribute('inert');
+  let heading = dialog.querySelector('h1');
+  console.log(heading);
+  setTimeout(() => {
+    // Looking at you, Safari/VO
+    
+  }, 0)
+  heading.focus();
+  pageContent.setAttribute('inert', true);
+  pageContent.setAttribute('aria-hidden', "true");
+}
+
+let closeDialog = (button) => {
+  if (dialog.getAttribute('hidden')) {
+    // it's already closed
+    return;
+  }
+  
+  activeButton.setAttribute('disabled', true); // only disabled the button until after we are positive it no longer has focus, otherwise sr bugs to the moon!
+  scoreCounter.play();
+  pageContent.removeAttribute('inert');
+  pageContent.removeAttribute('aria-hidden');
+  container.querySelector('caption').focus();
+  dialog.setAttribute('hidden', true);
+  dialog.setAttribute('inert', true);
+
+  //count number of active buttons
+  const completedRounds = document.querySelectorAll('#jeopardy-container button[disabled]');
+  
+  //play level/game end tones after score counter sound finishes
+  scoreCounter.onended = function() {
+    //if 5 completedRounds, play
+    if (completedRounds.length == 5) {
+      bonus2.play();
+    }
+    //if 10 completedRounds, play
+    if (completedRounds.length == 10) {
+      bonus2.play();
+    } 
+    //if 15 completedRounds, play
+    if (completedRounds.length == 15) {
+      bonus3.play();
+    } 
+    //if 20 completedRounds, play
+    if (completedRounds.length == 20) {
+      levelComplete.play();
+    } 
+    //if 24 completedRounds, finalLevel.play();
+    if (completedRounds.length == 24) {
+      finalLevel.play();
+    }
+    //if 25 completedRounds, gameOver.play();
+    if (completedRounds.length == 25) {
+      gameOver.play();
+      container.innerHTML = '<h1 tabindex="-1" id="caption">A11y Rulez Trivia</h1><div id="end-screen"><h2>Thanks for playing!</h2><p id="congrats">Congrats to our WINNERS!</p><button id="rematch">Rematch</button></div>';
+      html.classList.add('animate');
+      let heading2 = document.querySelector('h1#caption');
+      heading2.focus();
+      console.log(heading2);
+      startConfetti();
+      setTimeout(function() {
+        //html.classList.remove('animate');
+        stopConfetti(); 
+      }, (18*1000)); //stop confetti after 18 seconds
+    }
+    
+    //if category is cleared, remove th and levelComplete.play();
+    //if (completedRounds.length == 5) {
+    //  levelComplete.play();
+    //  console.log('category complete');
+    //}
+  }; // end sound
+} // end close dialog
+
+closeDialogBtn.addEventListener('click', closeDialog);
+
+
+function addPoints() {
+  //document.getElementById("score").innerHTML = "Hello World";
+  correctAnswer.play();
+}
+function subtractPoints() {
+  //document.getElementById("score").innerHTML = "Goodbye World";
+  buzzer.play();
+}
+
+document.addEventListener('keyup', e => {
+  if (e.keyCode === 27) {
+    closeDialog();
+  }
+});
+
+
+fetch('https://raw.githubusercontent.com/tenon-io/wcag-as-json/master/wcag.json')
+  .then(response => response.json())
+  .then(wcag => {
+    let categories = [];
+    wcag.forEach((principle, principleIndex) => {
+      categories[principleIndex] = {
+        'title': principle.title,
+        'level1': [],
+        'level2': [],
+        'level3': [],
+        'level4': [],
+        'level5': []
+      }
+      
+      principle.guidelines.forEach(guideline => {
+        guideline.success_criteria.forEach(sc => {
+          let q = {
+            'question': 'What is ' + sc.ref_id + ' - ' + sc.title,
+            'answer': 'This level ' + sc.level + ' SC states: ' + sc.description,
+            'more': ''
+          }
+          
+          if (sc.special_cases) {
+            q.answer_details = `<ul>`;
+            sc.special_cases.forEach(special_case => {
+              q.answer_details += `<li><strong>${special_case.title}</strong>: ${special_case.description}</li>`;
+            });
+            q.answer_details += `</ul>`;
+          }
+          
+          if (sc.references) {
+            sc.more = `<ul>`;
+            sc.references.forEach(reference => {
+              q.more += `<li><a href="${reference.url}" target="_blank">${reference.title}</a>`
+            })
+            sc.more += `</ul>`;
+          }
+          
+          if (sc.level === 'A') {
+            if (!categories[principleIndex].level1.length) {
+              categories[principleIndex].level1.push(q);
+              return;
+            }
+            if (!categories[principleIndex].level2.length) {
+              categories[principleIndex].level2.push(q);
+              return;
+            }
+            categories[principleIndex]['level'+getRandomInt(1,2)].push(q);
+            return;
+          } else if (sc.level === 'AA') {
+            if (!categories[principleIndex].level3.length) {
+              categories[principleIndex].level3.push(q);
+              return;
+            }
+            if (!categories[principleIndex].level4.length) {
+              categories[principleIndex].level4.push(q);
+              return;
+            }
+            categories[principleIndex]['level'+getRandomInt(3,4)].push(q);
+            return;
+          } else {
+            if (!categories[principleIndex].level5.length) {
+              categories[principleIndex].level5.push(q);
+              return;
+            }
+            categories[principleIndex].level5.push(q);
+            return;
+          }
+        });
+      });
+    });
+    
+    categories[0] = {
+        'title': 'Desktop Web',
+        'level1': [],
+        'level2': [],
+        'level3': [],
+        'level4': [],
+        'level5': []
+    }
+
+    categories[0].level1.push({
+      'question': '<h2>Keyboard shortcuts</h2><ol><li>Use "up" and "down" arrow keys to navigate through all the page content.</li><li>Use “h” and “shift + h” to navigate between headings.</li><li>Bring up all headings in a list with "Insert + F6".</li></ol>',
+      'answer': 'What are 3 ways users can navigate to headings using JAWS?',
+      'answer_details': ''
+    });
+
+    categories[0].level2.push({
+      'question': '<h2>Checkbox</h2><p>Tab to the checkboxes and press spacebar to check or uncheck.</p><h2>Radio button</h2><p>Tab to the radio button group and use arrow keys to change the selected option.</p>',
+      'answer': 'What’s the difference between selecting a checkbox in a group vs a radio button in a group using keyboard only?',
+      'answer_details': ''
+    });
+
+    categories[0].level3.push({
+      'question': '<h2>Two things</h2> <ol><li>No content is lost or overlaps</li><li>All functionality is available</li></ol>',
+      'answer': 'What are you testing for when zooming in to 200%?',
+      'answer_details': ''
+    });
+
+    categories[0].level4.push({
+      'question': '<ul><li>Visible focus indicator</li><li>Focus order</li><li>Everything that is operable with a mouse is also operable with a keyboard</li></ul>',
+      'answer': 'What 3 things do we test for using keyboard only?',
+      'answer_details': ''
+    });
+
+    categories[0].level5.push({
+      'question': '<h2>The name of the modal, role of modal dialog</h2> <p>Bonus: Focus goes back to the button that opened the modal and announces it.</p>',
+      'answer': 'When a modal opens, what should the screen reader announce?',
+      'answer_details': '<p><strong>100 bonus points:</strong> Where does focus go and what does it announce when the modal is closed?</p>'
+    });
+
+    
+    categories[1] = {
+        'title': 'Mobile Web',
+        'level1': [],
+        'level2': [],
+        'level3': [],
+        'level4': [],
+        'level5': []
+    }
+
+    categories[1].level1.push({
+      'question': '<h2>VoiceOver</h2> <p>Name of the button, Dimmed, Button</p> <h2>TalkBack</h2> <p>Name of the button, Disabled, Button</p><p>Note: A user could change the order the information is announced in under screen reader settings.</p>',
+      'answer': 'How do VoiceOver and TalkBack screen readers announce a button that cannot be interacted with?',
+      'answer_details': '<p>100 bonus points: Correct answer for both VoiceOver and TalkBack</p>'
+    });
+
+    categories[1].level2.push({
+      'question': '<h2>Pinch to Zoom and single finger drag to pan around</h2>',
+      'answer': 'How do you test Zoom on a mobile device?',
+      'answer_details': ''
+    });
+
+    categories[1].level3.push({
+      'question': '<h2>All interactive elements and text and images</h2> ',
+      'answer': 'When using a screen reader on mobile web, what content would you expect to find while swiping from left to right?',
+      'answer_details': ''
+    });
+
+    categories[1].level4.push({
+      'question': '<ol><li>Single finger swipe to the select menu so that it is in focus.</li><li>Double tap to open.</li><li>Swipe through the options.</li><li>Double tap to select the option you want.</li></ol> ',
+      'answer': 'When using a screen reader on mobile web, how would you navigate to and interact with a native select menu?',
+      'answer_details': ''
+    });
+
+    categories[1].level5.push({
+      'question': '<h2>Headings, Links, Buttons</h2>',
+      'answer': 'What are 3 things you can navigate to by using the VoiceOver Rotor or TalkBack Reading controls?',
+      'answer_details': ''
+    });
+    
+    categories[2] = {
+        'title': 'Mobile Apps',
+        'level1': [],
+        'level2': [],
+        'level3': [],
+        'level4': [],
+        'level5': []
+    }
+
+    categories[2].level1.push({
+      'question': '<h2>Name/label, role (what the thing does), sometimes state (selected, checked, on/off, etc.)</h2>',
+      'answer': 'What are 3 pieces of information the screen reader needs to announce for interactive elements?',
+      'answer_details': ''
+    });
+
+    categories[2].level2.push({
+      'question': '<h2>Selected</h2>',
+      'answer': 'What does the screen reader announce to let the user know which tab they’re on?',
+      'answer_details': ''
+    });
+
+    categories[2].level3.push({
+      'question': '<h2>Single finger swipe to move focus to an interactive element then double tap anywhere on the screen to activate it.</h2><p>Note: Some interactive elements announce a hint that other actions are available such as two finger swipe left to right to move through a carousel.</p>',
+      'answer': 'How do you navigate to interactive elements and interact with them using a screen reader?',
+      'answer_details': ''
+    });
+
+    categories[2].level4.push({
+      'question': '<h2>There are headings but no levels</h2>',
+      'answer': 'How many heading levels are in mobile apps?',
+      'answer_details': ''
+    });
+
+    categories[2].level5.push({
+      'question': '<h2>Large text, orientation, dark mode</h2>',
+      'answer': 'In M3 Honors App redesign, what is a new accessibility feature the app will support?',
+      'answer_details': ''
+    });
+    
+    categories[3] = {
+        'title': 'Tips & Tricks',
+        'level1': [],
+        'level2': [],
+        'level3': [],
+        'level4': [],
+        'level5': []
+    }
+    
+    categories[3].level1.push({
+      'question': '<h2>Speed, voice, rate/pitch, verbosity</h2>',
+      'answer': 'What are 3 things you can customize for any screen reader?',
+      'answer_details': ''
+    });
+    
+    categories[3].level2.push({
+      'question': '<h2>"CTRL +" to zoom in and "CTRL -" to zoom out</h2>',
+      'answer': 'What is the keyboard shortcut for zooming in and out on desktop web?',
+      'answer_details': ''
+    });
+    
+    categories[3].level3.push({
+      'question': '<h2>Hold one finger down and drag around the screen to hear what is under your finger. Or you can just place your finger on different areas of the screen and hear what the screen reader announces</h2> ',
+      'answer': 'Instead of swiping through a screen while using a screen reader, what are other ways you can find content on the screen?',
+      'answer_details': ''
+    });
+    
+    categories[3].level4.push({
+      'question': '<h2>TalkBack</h2><p>In TalkBack, you can toggle on “Display speech output” under TalkBack settings > Advanced settings > Developer Settings.<p><img src="imgs/TalkBack-Speech-Output.png" alt="Screenshot of the speech output" width="400" /></p><h2>VoiceOver</h2><p>In VoiceOver you can toggle on “Caption Panel” in VoiceOver settings.</p><p><img src="imgs/VoiceOver-Caption-Panel.PNG" alt="Screenshot of the Caption Panel" width="400" /></p>',
+      'answer': 'How can you read what the screen reader is announcing on a mobile device?',
+      'answer_details': ''
+    });
+    
+    categories[3].level5.push({
+      'question': '<h2>Shows a dialogue with all HTML elements on the current page</h2><p><img src="imgs/JAWS-Virtual-HTML-Features-dialog.png" alt="Screenshot of JAWS Virtual HTML Features dialog" /></p>',
+      'answer': 'When using JAWS, when you press “Insert + F3” what happens?',
+      'answer_details': ''
+    });
+  
+    categories[4] = {
+        'title': 'Users of AT',
+        'level1': [],
+        'level2': [],
+        'level3': [],
+        'level4': [],
+        'level5': []
+    }
+
+ categories[4].level1.push({
+      'question': '<h2>Everyone!</p>',
+      'answer': 'Who benefits from accessible websites and apps?',
+      'answer_details': ''
+    });
+    
+    categories[4].level2.push({
+      'question': '<h2>People with Low vision and older adults</h2>',
+      'answer': 'Who uses zooming and text enlargement frequently?',
+      'answer_details': ''
+    });
+    
+    categories[4].level3.push({
+      'question': '<h2>False</h2> <p>Bonus: Who else uses screen readers?</p>',
+      'answer': 'True or false? All screen reader users are blind.',
+      'answer_details': ''
+    });
+    
+    categories[4].level4.push({
+      'question': '<h2>On screen, Bluetooth external, Braille</h2>',
+      'answer': 'What are 3 types of keyboards you can use with a mobile device?',
+      'answer_details': ''
+    });
+
+    categories[4].level5.push({
+      'question': '<h2>Voice control, sip and puff, switch control, mouth stick, eye tracking.</h2>',
+      'answer': 'What are 3 other assistive technologies used besides keyboard only and screen reader to navigate websites?',
+      'answer_details': ''
+    });
+  
+    build('A11y Rulez Trivia', categories);
+});
+
+//build(categories);
+
+
+// confetti
+var maxParticleCount = 150; //set max confetti count
+var particleSpeed = 2; //set the particle animation speed
+var startConfetti; //call to start confetti animation
+var stopConfetti; //call to stop adding confetti
+var toggleConfetti; //call to start or stop the confetti animation depending on whether it's already running
+var removeConfetti; //call to stop the confetti animation and remove all confetti immediately
+
+(function() {
+	startConfetti = startConfettiInner;
+	stopConfetti = stopConfettiInner;
+	toggleConfetti = toggleConfettiInner;
+	removeConfetti = removeConfettiInner;
+	var colors = ["DodgerBlue", "OliveDrab", "Gold", "Pink", "SlateBlue", "LightBlue", "Violet", "PaleGreen", "SteelBlue", "SandyBrown", "Chocolate", "Crimson"]
+	var streamingConfetti = false;
+	var animationTimer = null;
+	var particles = [];
+	var waveAngle = 0;
+	
+	function resetParticle(particle, width, height) {
+		particle.color = colors[(Math.random() * colors.length) | 0];
+		particle.x = Math.random() * width;
+		particle.y = Math.random() * height - height;
+		particle.diameter = Math.random() * 10 + 5;
+		particle.tilt = Math.random() * 10 - 10;
+		particle.tiltAngleIncrement = Math.random() * 0.07 + 0.05;
+		particle.tiltAngle = 0;
+		return particle;
+	}
+
+	function startConfettiInner() {
+		var width = window.innerWidth;
+		var height = window.innerHeight;
+		window.requestAnimFrame = (function() {
+			return window.requestAnimationFrame ||
+				window.webkitRequestAnimationFrame ||
+				window.mozRequestAnimationFrame ||
+				window.oRequestAnimationFrame ||
+				window.msRequestAnimationFrame ||
+				function (callback) {
+					return window.setTimeout(callback, 16.6666667);
+				};
+		})();
+		var canvas = document.getElementById("confetti-canvas");
+		if (canvas === null) {
+			canvas = document.createElement("canvas");
+			canvas.setAttribute("id", "confetti-canvas");
+			canvas.setAttribute("style", "display:block;z-index:999999;pointer-events:none");
+			document.body.appendChild(canvas);
+			canvas.width = width;
+			canvas.height = height;
+			window.addEventListener("resize", function() {
+				canvas.width = window.innerWidth;
+				canvas.height = window.innerHeight;
+			}, true);
+		}
+		var context = canvas.getContext("2d");
+		while (particles.length < maxParticleCount)
+			particles.push(resetParticle({}, width, height));
+		streamingConfetti = true;
+		if (animationTimer === null) {
+			(function runAnimation() {
+				context.clearRect(0, 0, window.innerWidth, window.innerHeight);
+				if (particles.length === 0)
+					animationTimer = null;
+				else {
+					updateParticles();
+					drawParticles(context);
+					animationTimer = requestAnimFrame(runAnimation);
+				}
+			})();
+		}
+	}
+
+	function stopConfettiInner() {
+		streamingConfetti = false;
+	}
+
+	function removeConfettiInner() {
+		stopConfetti();
+		particles = [];
+	}
+
+	function toggleConfettiInner() {
+		if (streamingConfetti)
+			stopConfettiInner();
+		else
+			startConfettiInner();
+	}
+
+	function drawParticles(context) {
+		var particle;
+		var x;
+		for (var i = 0; i < particles.length; i++) {
+			particle = particles[i];
+			context.beginPath();
+			context.lineWidth = particle.diameter;
+			context.strokeStyle = particle.color;
+			x = particle.x + particle.tilt;
+			context.moveTo(x + particle.diameter / 2, particle.y);
+			context.lineTo(x, particle.y + particle.tilt + particle.diameter / 2);
+			context.stroke();
+		}
+	}
+
+	function updateParticles() {
+		var width = window.innerWidth;
+		var height = window.innerHeight;
+		var particle;
+		waveAngle += 0.01;
+		for (var i = 0; i < particles.length; i++) {
+			particle = particles[i];
+			if (!streamingConfetti && particle.y < -15)
+				particle.y = height + 100;
+			else {
+				particle.tiltAngle += particle.tiltAngleIncrement;
+				particle.x += Math.sin(waveAngle);
+				particle.y += (Math.cos(waveAngle) + particle.diameter + particleSpeed) * 0.5;
+				particle.tilt = Math.sin(particle.tiltAngle) * 15;
+			}
+			if (particle.x > width + 20 || particle.x < -20 || particle.y > height) {
+				if (streamingConfetti && particles.length <= maxParticleCount)
+					resetParticle(particle, width, height);
+				else {
+					particles.splice(i, 1);
+					i--;
+				}
+			}
+		}
+	}
+})();
+
+</script>
+
+<footer>
+<img src="imgs/hilton-DA-logo.png" alt="Hilton. Digital Accessibility." />
+</footer>
+</div>
+</div>
+</body>
+</html>
